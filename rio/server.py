@@ -5,11 +5,13 @@ import os
 from .pipes import Server, iter_find_methods
 
 
+# NOTE: Stores both name and module because technically os.path is a dynamic
+# passthru to a different module - however we want to access it using the
+# `os.path` route/name.
 _FILESYSTEM_CALLS = {
     ('os', os): {
         'os.stat',
-    },
-    ('os.path', os.path): {
+        'os.path',
         'os.path.exists',
     },
 }
