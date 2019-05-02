@@ -23,7 +23,7 @@ size = os.stat('/tmp').st_size
  
 ## TODO:
 
-####Context manager for temp patching of os.
+#### Context manager for temp patching of os.
 
 Something like...
 ```python
