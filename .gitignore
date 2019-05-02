@@ -1,0 +1,6 @@
+*.pyc
+.*/
+
+venv
+venv2
+venv3
