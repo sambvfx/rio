@@ -48,7 +48,6 @@ class RIO(object):
 
             func = functools.partial(_multiio, clients, func_name)
 
-            print(func_name)
             yield mock.patch(func_name, side_effect=func)
 
             parts = func_name.split('.')
@@ -105,7 +104,7 @@ def test():
         r = e
     print('>>> os.stat({!r}).st_size'.format(path), r)
     print()
-    print('>>> with Context(\'tcp://127.0.0.1:4242\'):')
+    print('>>> with RIO(\'tcp://127.0.0.1:4242\'):')
     with RIO('tcp://127.0.0.1:4242'):
         print('...     os.path.exists({!r})'.format(path), os.path.exists(path))
         try:
@@ -132,7 +131,7 @@ def test():
         r = e
     print('>>> {!r}.stat().st_size'.format(p), r)
     print()
-    print('>>> with Context(\'tcp://127.0.0.1:4242\'):')
+    print('>>> with RIO(\'tcp://127.0.0.1:4242\'):')
     with RIO('tcp://127.0.0.1:4242'):
         print('...     {!r}.exists()'.format(p), p.exists())
         try:
@@ -177,7 +176,7 @@ def test():
         r = e
     print('>>> {!r}.stat().st_size'.format(p), r)
     print()
-    print('>>> with Context(\'tcp://127.0.0.1:4242\'):')
+    print('>>> with RIO(\'tcp://127.0.0.1:4242\'):')
     with RIO('tcp://127.0.0.1:4242'):
         print('...     {!r}.exists()'.format(p), p.exists())
         try:

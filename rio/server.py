@@ -31,8 +31,8 @@ except ImportError:
     pass
 else:
     _FILESYSTEM_CALLS.update({
-        'pathlib.Path.exists': pathlib.Path.exists,
-        'pathlib.Path.stat': pathlib.Path.stat,
+        'pathlib.Path.exists': lambda x: pathlib.Path(x).exists(),
+        'pathlib.Path.stat': lambda x: pathlib.Path(x).stat(),
     })
 
 
