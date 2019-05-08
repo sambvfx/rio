@@ -7,7 +7,13 @@ import _testmodule
 
 @pytest.fixture
 def server():
-    return Server(_testmodule)
+    return Server({
+        'CONST': _testmodule.CONST,
+        'a': _testmodule.a,
+        'b': _testmodule.b,
+        'path': _testmodule.path,
+        'CustomPath.exists': _testmodule.CustomPath.exists,
+    })
 
 
 def test_schema(server):
@@ -15,6 +21,7 @@ def test_schema(server):
     assert server._schema['a'] == Schema.CALLABLE
     assert server._schema['b'] == Schema.CALLABLE
     assert server._schema['path'] == Schema.MODULE
+    assert server._schema['CustomPath.exists'] == Schema.CALLABLE
 
 
 def test_callables(server):

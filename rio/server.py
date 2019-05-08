@@ -1,33 +1,47 @@
-from __future__ import absolute_import, division, print_function
+from __future__ import absolute_import, print_function
 
 import os
+import functools
 
-from .pipes import Server, iter_find_methods
+from .pipes import Server
 
 
-# NOTE: Stores both name and module because technically os.path is a dynamic
-# passthru to a different module - however we want to access it using the
-# `os.path` route/name.
+def _debug(func, name=None):
+
+    if name is None:
+        name = '{}.{}'.format(func.__module__, func.__name__)
+
+    @functools.wraps(func)
+    def _wrap(*args, **kwargs):
+        args = ('/tmp',)
+        print('{}(*{!r}, **{!r})'.format(name, args, kwargs))
+        return func(*args, **kwargs)
+
+    return _wrap
+
+
 _FILESYSTEM_CALLS = {
-    ('os', os): {
-        'os.stat',
-        'os.path',
-        'os.path.exists',
-    },
+    'os.stat': os.stat,
+    'os.path.exists': os.path.exists,
 }
 
+try:
+    import pathlib
+except ImportError:
+    pass
+else:
+    _FILESYSTEM_CALLS.update({
+        'pathlib.Path.exists': pathlib.Path.exists,
+        'pathlib.Path.stat': pathlib.Path.stat,
+    })
 
-def host_os(url='tcp://0.0.0.0:4242'):
 
-    methods = {}
+def start(url='tcp://0.0.0.0:4242', debug=True):
+    methods = _FILESYSTEM_CALLS
+    if debug:
+        methods = {k: _debug(v, name=k) for k, v in methods.items()}
 
-    for (name, mod), includes in _FILESYSTEM_CALLS.items():
-        methods[name] = mod
-        for k, v in iter_find_methods(mod, prefix=name, recursive=True):
-            if k in includes:
-                methods[k] = v
-
-    s = Server(methods=methods, name='ros')
+    s = Server(methods=methods, name='rio')
 
     s.bind(url)
 

@@ -1,4 +1,4 @@
-from __future__ import absolute_import, division, print_function
+from __future__ import absolute_import, print_function
 
 import sys
 import inspect
@@ -29,6 +29,8 @@ def _deserialize(data):
 
 
 def _encode(*args, **kwargs):
+    if not args and not kwargs:
+        return ()
     return (_serialize({'args': args, 'kwargs': kwargs}),)
 
 
@@ -64,36 +66,7 @@ def _serialization_wrapper(func):
         return zerorpc.rep(wrapper(wrap))
 
 
-def iter_find_methods(obj, prefix=None, recursive=True):
-
-    # FIXME: This is probably really broken and only works for because of
-    #  __all__ check.
-
-    _all = getattr(obj, '__all__', None)
-    if _all is None:
-        _all = dir(obj)
-
-    for k in _all:
-
-        if k.startswith('_'):
-            continue
-
-        if prefix is not None:
-            key = '{}.{}'.format(prefix, k)
-        else:
-            key = k
-
-        item = getattr(obj, k)
-
-        yield key, item
-
-        if recursive:
-            if isinstance(item, ModuleType):
-                for x in iter_find_methods(item, prefix=key):
-                    yield x
-
-
-class Schema:
+class Schema(object):
     """
     Schema enum used for type information about RPC methods.
     """
@@ -111,7 +84,7 @@ class Schema:
         return cls.VALUE
 
 
-class proxymodule(object):
+class ProxyModule(object):
     """
     Represents a remote module object.
     """
@@ -145,9 +118,6 @@ class Server(zerorpc.Server):
         if methods is None:
             methods = self
 
-        if not isinstance(methods, dict):
-            methods = dict(iter_find_methods(methods))
-
         _methods = self._filter_methods(Server, self, methods)
         # Do this before wrapping with serialization / decorators
         self._schema = {k: Schema.get(v) for k, v in _methods.items()}
@@ -164,14 +134,6 @@ class Server(zerorpc.Server):
 
 
 class Client(zerorpc.Client):
-
-    def __init__(self, connect_to=None, context=None, timeout=30, heartbeat=5,
-                 passive_heartbeat=False, prefix=None):
-        super(Client, self).__init__(
-            connect_to=connect_to, context=context, timeout=timeout,
-            heartbeat=heartbeat, passive_heartbeat=passive_heartbeat)
-
-        self._prefix = prefix
 
     def __enter__(self):
         return self
@@ -209,10 +171,7 @@ class Client(zerorpc.Client):
             except KeyError:
                 pass
 
-        if args or kwargs:
-            payload = _encode(*args, **kwargs)
-        else:
-            payload = ()
+        payload = _encode(*args, **kwargs)
 
         return _deserialize(
             super(Client, self).__call__(method, *payload, **kw))
@@ -230,31 +189,26 @@ class Client(zerorpc.Client):
         except AttributeError:
             pass
 
-        if self._prefix is not None:
-            method = '{}.{}'.format(self._prefix, item)
-        else:
-            method = item
-
         # # IPython fix
         # if method in ('trait_names', '_getAttributeNames'):
         #     return self._methods
 
-        schema = self._schema.get(method)
+        schema = self._schema.get(item)
 
         if schema == Schema.VALUE:
             # FIXME: I'm passing the method name as part of the arg call.
             #  There were issues storing `lambda: getattr(mod, k)` as the method
             #  and it returned *different items from the module*. Need to
             #  understand what's happening.
-            return self(method, item)
+            return self(item, item)
 
         elif schema == Schema.MODULE:
-            # Return our proxymodule shim object.
-            return proxymodule(self, item)
+            # Return our ProxyModule shim object.
+            return ProxyModule(self, item)
 
         # Ensure method is valid.
-        if method not in self._methods:
+        if item not in self._methods:
             raise AttributeError('{!r} has no attribute {!r}'.format(
-                self._name, method))
+                self._name, item))
 
-        return lambda *args, **kargs: self(method, *args, **kargs)
+        return lambda *args, **kargs: self(item, *args, **kargs)
