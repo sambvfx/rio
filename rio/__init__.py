@@ -1,25 +1,51 @@
 from __future__ import absolute_import, print_function
 
-import sys
+import os
 
 from collections import defaultdict
 import functools
+import pathlib
 
 import mock
 
 from .pipes import Client
 
 
-_PATCH_EXCLUDE_MODULES = frozenset((
-    'unittest',
-    'pytest',
-    '_pytest',
-    'py',
-    'pluggy',
-))
+# _PATCH_EXCLUDE_MODULES = frozenset((
+#     'unittest',
+#     'pytest',
+#     '_pytest',
+#     'py',
+#     'pluggy',
+# ))
+
+
+def iterfsmethods():
+
+    names = [s for s in dir(pathlib._NormalAccessor) if s[0] != '_']
+    for name in names:
+        obj = getattr(os, name)
+        if obj is not None:
+            yield 'os.{}'.format(name), obj
+
+    for name in os.path.__all__:
+        obj = getattr(os.path, name)
+        if obj is not None:
+            yield 'os.path.{}'.format(name), obj
+
+    for name in names:
+        obj = getattr(pathlib._NormalAccessor, name)
+        yield 'pathlib._NormalAccessor.{}'.format(name), obj
 
 
 def _multiio(clients, func_name, *args, **kwargs):
+    # s = '{}('.format(func_name)
+    # if args:
+    #     s += ', '.join(repr(x) for x in args)
+    # if kwargs:
+    #     s += ', '.join('{}={!r}'.format(k, v) for k, v in kwargs.items())
+    # s += ')'
+    # print(s)
     results = []
     for client in clients:
         results.append(client(func_name, *args, **kwargs))
@@ -31,10 +57,10 @@ def _multiio(clients, func_name, *args, **kwargs):
 class RIO(object):
 
     def __init__(self, *targets):
-        self._ctxs = []  # List[Callable]
-        self._targets = targets  # List[str]
+        self._ctxs = []  # List[Tuple[str, mock._patch]]
+        self._targets = targets  # Iterable[str]
 
-    def iter_patched(self):
+    def __iter__(self):
 
         methods = defaultdict(list)
         for target in self._targets:
@@ -42,147 +68,48 @@ class RIO(object):
             for m in c._methods:
                 methods[m].append(c)
 
-        seen = set()
+        # seen = set()
 
         for func_name, clients in methods.items():
 
             func = functools.partial(_multiio, clients, func_name)
 
-            yield mock.patch(func_name, side_effect=func)
+            # print('Patching {!r}'.format(func_name))
+            yield func_name, mock.patch(
+                func_name, autospec=True, side_effect=func)
 
-            parts = func_name.split('.')
-            for k, mod in sys.modules.items():
-                if any(k.startswith(s) for s in _PATCH_EXCLUDE_MODULES):
-                    continue
-                path = [k]
-                for part in parts:
-                    mod = getattr(mod, part, None)
-                    if mod is None:
-                        break
-                    else:
-                        path.append(part)
-                else:
-                    key = '.'.join(path)
-                    if key in seen:
-                        continue
-                    seen.add(key)
-
-                    yield mock.patch(key, side_effect=func)
+            # parts = func_name.split('.')
+            # for k, mod in sys.modules.items():
+            #     if k == parts[0]:
+            #         continue
+            #     if any(k.startswith(s) for s in _PATCH_EXCLUDE_MODULES):
+            #         continue
+            #     path = [k]
+            #     for part in parts:
+            #         mod = getattr(mod, part, None)
+            #         if mod is None:
+            #             break
+            #         else:
+            #             path.append(part)
+            #     else:
+            #         key = '.'.join(path)
+            #         if key in seen:
+            #             continue
+            #         seen.add(key)
+            #         # print('  + {!r}'.format(key))
+            #         yield key, mock.patch(key, side_effect=func)
 
     def __enter__(self):
-        for ctx in self.iter_patched():
-            ctx.__enter__()
-            self._ctxs.append(ctx)
+        for name, ctx in iter(self):
+            try:
+                ctx.__enter__()
+            except ImportError:
+                pass
+            self._ctxs.append((name, ctx))
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self._ctxs:
-            for ctx in reversed(self._ctxs):
+            for _, ctx in reversed(self._ctxs):
                 ctx.__exit__()
         self._ctxs = []
-
-
-def test():
-    """
-    Tests to be executed with a server started.
-    """
-
-    # os
-
-    import os
-
-    path = '/tmp/os'
-
-    print('\n\n')
-    print('-'*80)
-    print('Testing os')
-    print()
-
-    print('>>> os.path.exists({!r})'.format(path), os.path.exists(path))
-    try:
-        r = os.stat(path).st_size
-    except Exception as e:
-        r = e
-    print('>>> os.stat({!r}).st_size'.format(path), r)
-    print()
-    print('>>> with RIO(\'tcp://127.0.0.1:4242\'):')
-    with RIO('tcp://127.0.0.1:4242'):
-        print('...     os.path.exists({!r})'.format(path), os.path.exists(path))
-        try:
-            r = os.stat(path).st_size
-        except Exception as e:
-            r = e
-        print('...     os.stat({!r}).st_size'.format(path), r)
-
-    # pathlib
-
-    import pathlib
-
-    p = pathlib.Path('/tmp/pathlib')
-
-    print('\n\n')
-    print('-'*80)
-    print('Testing pathlib')
-    print()
-
-    print('>>> {!r}.exists()'.format(p), p.exists())
-    try:
-        r = p.stat().st_size
-    except Exception as e:
-        r = e
-    print('>>> {!r}.stat().st_size'.format(p), r)
-    print()
-    print('>>> with RIO(\'tcp://127.0.0.1:4242\'):')
-    with RIO('tcp://127.0.0.1:4242'):
-        print('...     {!r}.exists()'.format(p), p.exists())
-        try:
-            r = p.stat().st_size
-        except Exception as e:
-            r = e
-        print('...     {!r}.stat().st_size'.format(p), r)
-
-    # custom
-
-    class CustomPath(object):
-
-        existsmeth = staticmethod(os.path.exists)
-        statsmeth = staticmethod(os.stat)
-
-        def __init__(self, p):
-            self._path = p
-
-        def __repr__(self):
-            return '{}({!r})'.format(self.__class__.__name__, str(self._path))
-
-        def __str__(self):
-            return str(self._path)
-
-        def exists(self):
-            return self.existsmeth(str(self))
-
-        def stat(self):
-            return self.statsmeth(str(self))
-
-    p = CustomPath('/tmp/mypath')
-
-    print('\n\n')
-    print('-'*80)
-    print('Testing custom')
-    print()
-
-    print('>>> {!r}.exists()'.format(p), p.exists())
-    try:
-        r = p.stat().st_size
-    except Exception as e:
-        r = e
-    print('>>> {!r}.stat().st_size'.format(p), r)
-    print()
-    print('>>> with RIO(\'tcp://127.0.0.1:4242\'):')
-    with RIO('tcp://127.0.0.1:4242'):
-        print('...     {!r}.exists()'.format(p), p.exists())
-        try:
-            r = p.stat().st_size
-        except Exception as e:
-            r = e
-        print('...     {!r}.stat().st_size'.format(p), r)
-
-    print('\n\n')

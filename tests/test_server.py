@@ -2,17 +2,17 @@ import pytest
 
 from rio.pipes import Server, Schema, _deserialize, _encode
 
-import _testmodule
+import mymodule
 
 
 @pytest.fixture
 def server():
     return Server({
-        'CONST': _testmodule.CONST,
-        'a': _testmodule.a,
-        'b': _testmodule.b,
-        'path': _testmodule.path,
-        'CustomPath.exists': _testmodule.CustomPath.exists,
+        'CONST': mymodule.CONST,
+        'a': mymodule.a,
+        'b': mymodule.b,
+        'path': mymodule.path,
+        'CustomPath.exists': mymodule.CustomPath.exists,
     })
 
 
@@ -31,7 +31,7 @@ def test_callables(server):
 
 def test_values(server):
     assert 'CONST' in server._methods
-    assert _deserialize(server._methods['CONST']()) == _testmodule.CONST
+    assert _deserialize(server._methods['CONST']()) == mymodule.CONST
 
 
 def test_callable_args(server):

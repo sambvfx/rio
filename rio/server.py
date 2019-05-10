@@ -1,43 +1,37 @@
 from __future__ import absolute_import, print_function
 
-import os
 import functools
 
+from . import iterfsmethods
 from .pipes import Server
 
 
 def _debug(func, name=None):
+
+    if not callable(func):
+        return func
 
     if name is None:
         name = '{}.{}'.format(func.__module__, func.__name__)
 
     @functools.wraps(func)
     def _wrap(*args, **kwargs):
-        args = ('/tmp',)
-        print('{}(*{!r}, **{!r})'.format(name, args, kwargs))
+        # args = ('/tmp',)
+        s = '{}('.format(name)
+        if args:
+            s += ', '.join(repr(x) for x in args)
+        if kwargs:
+            s += ', '.join('{}={!r}'.format(k, v) for k, v in kwargs.items())
+        s += ')'
+        print(s)
         return func(*args, **kwargs)
 
     return _wrap
 
 
-_FILESYSTEM_CALLS = {
-    'os.stat': os.stat,
-    'os.path.exists': os.path.exists,
-}
-
-try:
-    import pathlib
-except ImportError:
-    pass
-else:
-    _FILESYSTEM_CALLS.update({
-        'pathlib.Path.exists': lambda x: pathlib.Path(x).exists(),
-        'pathlib.Path.stat': lambda x: pathlib.Path(x).stat(),
-    })
-
-
 def start(url='tcp://0.0.0.0:4242', debug=True):
-    methods = _FILESYSTEM_CALLS
+    methods = dict(iterfsmethods())
+
     if debug:
         methods = {k: _debug(v, name=k) for k, v in methods.items()}
 
