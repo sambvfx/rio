@@ -11,7 +11,7 @@ import pathlib
 
 import pytest
 
-from rio import RIO, iterfsmethods
+from rio.rpc import rio, iterfsmethods
 from rio.pipes import Server
 
 import mymodule
@@ -84,7 +84,7 @@ def custompath(path):
 
 @pytest.fixture
 def ctx():
-    return RIO(CLIENT_SOCKET)
+    return rio(CLIENT_SOCKET)
 
 
 class TestPath(object):
