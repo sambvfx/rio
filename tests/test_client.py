@@ -5,6 +5,7 @@ import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+import time
 import functools
 import subprocess
 import pathlib
@@ -56,11 +57,16 @@ def switcharoo(func, name=None):
 
 
 def start_server():
-    methods = {k: switcharoo(v, name=k) for k, v in iterfsmethods()}
-    s = Server(methods=methods)
-    s.bind(SERVER_SOCKET)
-    print('starting rio server')
-    s.run()
+    try:
+        methods = {k: switcharoo(v, name=k) for k, v in iterfsmethods()}
+        s = Server(methods=methods)
+        s.bind(SERVER_SOCKET)
+        print('starting rio server')
+        s.run()
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 
 if __name__ == '__main__':
@@ -91,13 +97,20 @@ class TestPath(object):
 
     server = None
 
-    @classmethod
-    def setup_class(cls):
+    @staticmethod
+    def _cleanup():
         if os.path.exists(TEST_PATH_NOT_EXISTS):
             os.remove(TEST_PATH_NOT_EXISTS)
 
+        if os.path.exists(TEST_CHILDPATH):
+            os.remove(TEST_CHILDPATH)
+
         if os.path.exists(TEST_PATH_EXISTS):
-            os.remove(TEST_PATH_EXISTS)
+            os.rmdir(TEST_PATH_EXISTS)
+
+    @classmethod
+    def setup_class(cls):
+        cls._cleanup()
 
         os.mkdir(TEST_PATH_EXISTS)
         with open(TEST_CHILDPATH, 'a'):
@@ -106,12 +119,15 @@ class TestPath(object):
         cls.server = subprocess.Popen(
             ['python', __file__],
         )
+        time.sleep(1.0)
+        cls.server.poll()
+        if cls.server.returncode is not None:
+            raise RuntimeError('Server subprocess failed to start properly')
 
     @classmethod
     def teardown_class(cls):
         cls.server.kill()
-        os.remove(TEST_CHILDPATH)
-        os.rmdir(TEST_PATH_EXISTS)
+        cls._cleanup()
 
     @staticmethod
     def test_os_local(path):
