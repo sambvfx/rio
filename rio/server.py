@@ -2,7 +2,7 @@ from __future__ import absolute_import, print_function
 
 import functools
 
-from . import iterfsmethods
+from .rpc import iterfsmethods
 from .pipes import Server
 
 
