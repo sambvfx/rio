@@ -24,12 +24,12 @@ def iterfsmethods():
 
     names = [s for s in dir(pathlib._NormalAccessor) if s[0] != '_']
     for name in names:
-        obj = getattr(os, name)
+        obj = getattr(os, name, None)
         if obj is not None:
             yield 'os.{}'.format(name), obj
 
     for name in os.path.__all__:
-        obj = getattr(os.path, name)
+        obj = getattr(os.path, name, None)
         if obj is not None:
             yield 'os.path.{}'.format(name), obj
 
