@@ -12,7 +12,8 @@ import pathlib
 
 import pytest
 
-from rio.rpc import rio, iterfsmethods
+from rio.api import rio
+from rio.packages.fs import iterfsmethods
 from rio.pipes import Server
 
 import mymodule
@@ -58,7 +59,11 @@ def switcharoo(func, name=None):
 
 def start_server():
     try:
-        methods = {k: switcharoo(v, name=k) for k, v in iterfsmethods()}
+        # Because we're changing the path, we need to run the os.path.join
+        # (part of listdir) remotely. Override the default excludes so all
+        # os.path commands run remote.
+        methods = {k: switcharoo(v, name=k) for k, v in iterfsmethods(
+            excludes=None)}
         s = Server(methods=methods)
         s.bind(SERVER_SOCKET)
         print('starting rio server')

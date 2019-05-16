@@ -3,7 +3,6 @@ from __future__ import absolute_import, print_function
 import sys
 import inspect
 import functools
-import copy
 
 import zerorpc
 
@@ -31,21 +30,25 @@ def _deserialize(data):
 def _encode(*args, **kwargs):
     if not args and not kwargs:
         return ()
-    return (_serialize({'args': args, 'kwargs': kwargs}),)
+    return (_serialize((args, kwargs)),)
 
 
 def _decode(*args):
     if not args:
         return (), {}
-    data = _deserialize(args[0])
-    return data['args'], data['kwargs']
+    return _deserialize(args[0])
+
+
+def _fetch(value):
+    return value
 
 
 def _serialization_wrapper(func):
 
     if not callable(func):
-        result = copy.copy(func)
-        func = lambda: result
+        func = functools.partial(_fetch, func)
+        func.__module__ = 'rio.virtual'
+        func.__name__ = 'rio.virtual'
 
     wrapper, wrapped = undecorate(func)
 

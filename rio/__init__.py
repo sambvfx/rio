@@ -3,7 +3,7 @@ Remote IO
 """
 from __future__ import absolute_import, print_function
 
-from .rpc import rio
+from .api import rio
 
 
 __version__ = '0.0.1'
