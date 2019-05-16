@@ -1,6 +1,8 @@
 *.pyc
 .*/
 
+rio.egg-info
+
 venv
 venv2
 venv3

@@ -3,7 +3,6 @@ Client tests.
 """
 import os
 import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import time
 import functools
@@ -27,13 +26,10 @@ TEST_CHILDPATH = '/tmp/rio_tests/child'
 TEST_PATH_NOT_EXISTS = '/tmp/rio_tests_not'
 
 
-def switcharoo(func, name=None):
+def switcharoo(func):
 
     if not callable(func):
         return func
-
-    if name is None:
-        name = func.__name__
 
     @functools.wraps(func)
     def _wrap(*args, **kwargs):
@@ -44,14 +40,6 @@ def switcharoo(func, name=None):
             path = type(path)(TEST_PATH_EXISTS)
             args = tuple([path] + args[1:])
 
-        # s = '{}('.format(name)
-        # if args:
-        #     s += ', '.join(repr(x) for x in args)
-        # if kwargs:
-        #     s += ', '.join('{}={!r}'.format(k, v) for k, v in kwargs.items())
-        # s += ')'
-        # print(s)
-
         return func(*args, **kwargs)
 
     return _wrap
@@ -59,14 +47,9 @@ def switcharoo(func, name=None):
 
 def start_server():
     try:
-        # Because we're changing the path, we need to run the os.path.join
-        # (part of listdir) remotely. Override the default excludes so all
-        # os.path commands run remote.
-        methods = {k: switcharoo(v, name=k) for k, v in iterfsmethods(
-            excludes=None)}
+        methods = {k: switcharoo(v) for k, v in iterfsmethods()}
         s = Server(methods=methods)
         s.bind(SERVER_SOCKET)
-        print('starting rio server')
         s.run()
     except Exception:
         import traceback
@@ -141,13 +124,6 @@ class TestPath(object):
             os.stat(path)
 
     @staticmethod
-    def test_os_patched(ctx):
-        with ctx as r:
-            patched = [t[0] for t in r._ctxs]
-            assert 'os.path.exists' in patched
-            assert 'os.stat' in patched
-
-    @staticmethod
     def test_os_rpc(path, ctx):
         with ctx:
             assert os.path.exists(path)
@@ -158,12 +134,6 @@ class TestPath(object):
         assert not pathlibpath.exists()
         with pytest.raises(OSError):
             pathlibpath.stat()
-
-    @staticmethod
-    def test_pathlib_patched(ctx):
-        with ctx as r:
-            patched = [x[0] for x in r._ctxs]
-            assert 'pathlib._NormalAccessor.stat' in patched
 
     @staticmethod
     def test_pathlib_rpc(pathlibpath, ctx):
@@ -189,6 +159,5 @@ class TestPath(object):
 
     @staticmethod
     def test_custom_rpc_listdir(custompath, ctx):
-        expected = [mymodule.CustomPath(TEST_CHILDPATH)]
         with ctx:
-            assert expected == custompath.listdir()
+            assert custompath.listdir()

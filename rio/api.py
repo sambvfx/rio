@@ -11,12 +11,13 @@ from .log import get_logger
 _logger = get_logger(__name__)
 
 
-class rio(object):
+class PatchedClient(Client):
     """
-    Context manager for temporarily patching methods hosted by a remote server.
+    A modified zerorpc Client that temporarily patches remote server methods
+    when used as a context manager.
     """
 
-    def __init__(self, target, **kwargs):
+    def __init__(self, **kwargs):
         """
         Parameters
         ----------
@@ -27,43 +28,57 @@ class rio(object):
         heartbeat : float
         passive_heartbeat : bool
         """
-        kwargs['connect_to'] = target
-        # Defaults
-        kwargs.setdefault('timeout', 8.0)
-        kwargs.setdefault('heartbeat', 5.0)
-        kwargs.setdefault('passive_heartbeat', True)
-        self._client_kwargs = kwargs
-
-        self._ctxs = []  # List[Tuple[str, mock._patch]]
-        self._client = None  # type: Client
-
-    def __call__(self, func_name, *args, **kwargs):
-        return self._client(func_name, *args, **kwargs)
+        super(PatchedClient, self).__init__(**kwargs)
+        self._ctxs = []  # List[mock._patch]
 
     def __iter__(self):
-        self._client = Client(**self._client_kwargs)
-
-        for func_name in self._client._methods:
+        for func_name in self._methods:
 
             _logger.debug('Patching {!r}'.format(func_name))
 
-            yield func_name, mock.patch(
+            yield mock.patch(
                 func_name, autospec=True,
                 side_effect=functools.partial(self, func_name))
 
     def __enter__(self):
-        for name, ctx in iter(self):
+        for ctx in iter(self):
             try:
                 ctx.__enter__()
             except ImportError:
                 pass
-            self._ctxs.append((name, ctx))
-        return self
+            self._ctxs.append(ctx)
+        return super(PatchedClient, self).__enter__()
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self._ctxs:
-            for _, ctx in reversed(self._ctxs):
+            for ctx in reversed(self._ctxs):
                 ctx.__exit__()
         self._ctxs = []
-        self._client.close()
-        self._client = None
+        return super(PatchedClient, self).__exit__(exc_type, exc_val, exc_tb)
+
+
+def rio(connect_to, context=None, timeout=8.0, heartbeat=5.0,
+        passive_heartbeat=True):
+    """
+    Get a context manager for executing remote methods.
+
+    Parameters
+    ----------
+    connect_to : str
+    context : Optional[Any]
+    timeout : float
+    heartbeat : float
+    passive_heartbeat : bool
+
+    Returns
+    -------
+    _Patched
+    """
+    kwargs = {
+        'connect_to': connect_to,
+        'context': context,
+        'timeout': timeout,
+        'heartbeat': heartbeat,
+        'passive_heartbeat': passive_heartbeat,
+    }
+    return PatchedClient(**kwargs)
