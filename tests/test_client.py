@@ -2,18 +2,17 @@
 Client tests.
 """
 import os
-import sys
 
-import time
 import functools
-import subprocess
+import gevent
 import pathlib
 
 import pytest
 
-from rio.api import rio
+import rio.server
+import rio.api
 from rio.packages.fs import iterfsmethods
-from rio.pipes import Server
+from rio.pipes import ProxyModule
 
 import mymodule
 
@@ -45,22 +44,6 @@ def switcharoo(func):
     return _wrap
 
 
-def start_server():
-    try:
-        methods = {k: switcharoo(v) for k, v in iterfsmethods()}
-        s = Server(methods=methods)
-        s.bind(SERVER_SOCKET)
-        s.run()
-    except Exception:
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
-
-
-if __name__ == '__main__':
-    start_server()
-
-
 @pytest.fixture
 def path():
     return TEST_PATH_NOT_EXISTS
@@ -77,11 +60,43 @@ def custompath(path):
 
 
 @pytest.fixture
-def ctx():
-    return rio(CLIENT_SOCKET)
+def client():
+    return rio.api.rio(CLIENT_SOCKET, timeout=1.0)
 
 
-class TestPath(object):
+class TestSchema(object):
+
+    server = None
+
+    @classmethod
+    def setup_class(cls):
+        cls.server = gevent.spawn(rio.server.start, mymodule)
+
+    @classmethod
+    def teardown_class(cls):
+        cls.server.kill()
+        cls.server = None
+
+    @staticmethod
+    def test_getattr_callable(client):
+        assert callable(getattr(client, 'tests.mymodule.a'))
+
+    @staticmethod
+    def test_getattr_value(client):
+        assert getattr(client, 'tests.mymodule.CONST') == 42
+
+    @staticmethod
+    def test_getattr_module(client):
+        assert isinstance(getattr(client, 'tests.mymodule.path'), ProxyModule)
+
+    @staticmethod
+    def test_raise_error(client):
+        with client:
+            with pytest.raises(ValueError):
+                mymodule.raise_error()
+
+
+class TestFS(object):
 
     server = None
 
@@ -104,17 +119,14 @@ class TestPath(object):
         with open(TEST_CHILDPATH, 'a'):
             os.utime(TEST_CHILDPATH, None)
 
-        cls.server = subprocess.Popen(
-            ['python', __file__],
-        )
-        time.sleep(1.0)
-        cls.server.poll()
-        if cls.server.returncode is not None:
-            raise RuntimeError('Server subprocess failed to start properly')
+        cls.server = gevent.spawn(
+            rio.server.start,
+            {k: switcharoo(v) for k, v in iterfsmethods()})
 
     @classmethod
     def teardown_class(cls):
         cls.server.kill()
+        cls.server = None
         cls._cleanup()
 
     @staticmethod
@@ -124,8 +136,8 @@ class TestPath(object):
             os.stat(path)
 
     @staticmethod
-    def test_os_rpc(path, ctx):
-        with ctx:
+    def test_os_rpc(path, client):
+        with client:
             assert os.path.exists(path)
             assert os.stat(path)
 
@@ -136,8 +148,8 @@ class TestPath(object):
             pathlibpath.stat()
 
     @staticmethod
-    def test_pathlib_rpc(pathlibpath, ctx):
-        with ctx:
+    def test_pathlib_rpc(pathlibpath, client):
+        with client:
             assert pathlibpath.exists()
             assert pathlibpath.stat()
 
@@ -148,8 +160,8 @@ class TestPath(object):
             custompath.stat()
 
     @staticmethod
-    def test_custom_rpc(custompath, ctx):
-        with ctx:
+    def test_custom_rpc(custompath, client):
+        with client:
             assert custompath.exists()
             assert custompath.stat()
 
@@ -158,6 +170,6 @@ class TestPath(object):
         assert not custompath.listdir()
 
     @staticmethod
-    def test_custom_rpc_listdir(custompath, ctx):
-        with ctx:
+    def test_custom_rpc_listdir(custompath, client):
+        with client:
             assert custompath.listdir()

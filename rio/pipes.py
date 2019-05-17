@@ -114,6 +114,16 @@ class ProxyModule(object):
 
 
 class Server(zerorpc.Server):
+    """
+    Modified zerorpc server that adds extended functionality.
+
+    Features include:
+      - All methods are wrapped in a serialization layer so any types of args
+        and kwargs can be passed.
+      - True first-class exceptions.
+      - Keeps track of method "schema" which allows hosting of more than just
+        callable methods (such as constants or even modules).
+    """
 
     def __init__(self, methods=None, name=None, context=None, pool_size=None,
                  heartbeat=5):
@@ -131,12 +141,100 @@ class Server(zerorpc.Server):
             methods=_methods, name=name, context=context, pool_size=pool_size,
             heartbeat=heartbeat)
 
+    @staticmethod
+    def _filter_methods(cls, self, methods):
+        # Override method to not restrict methods to only callables.
+        if isinstance(methods, dict):
+            return methods
+        server_methods = set(k for k in dir(cls) if not k.startswith('_'))
+
+        if isinstance(methods, ModuleType) \
+                or methods.__module__ == '__builtin__':
+            prefix = methods.__name__
+        else:
+            prefix = '{}.{}'.format(
+                methods.__module__, methods.__class__.__name__)
+
+        return {'{}.{}'.format(prefix, k): getattr(methods, k)
+                for k in dir(methods) if not k.startswith('_')
+                and k not in server_methods}
+
     def _inject_builtins(self):
         super(Server, self)._inject_builtins()
         self._methods['_schema'] = lambda: self._schema
 
+    def _async_task(self, initial_event):
+        # Override method to completely serialize exceptions. By default
+        # zerorpc raises a RemoteError with the server-side exception details.
+        # That's fine if your code catches general errors for debugging, but
+        # does not work for code-flow where you catch specific errort types.
+        # Such as how most of `os.path` methods work where they catch OSError
+        # and change how they operate based on that.
+
+        protocol_v1 = initial_event.header.get(u'v', 1) < 2
+        channel = self._multiplexer.channel(initial_event)
+        hbchan = zerorpc.HeartBeatOnChannel(
+            channel, freq=self._heartbeat_freq, passive=protocol_v1)
+        bufchan = zerorpc.BufferedChannel(hbchan)
+        exc_infos = None
+        event = bufchan.recv()
+        try:
+            self._context.hook_load_task_context(event.header)
+            functor = self._methods.get(event.name, None)
+            if functor is None:
+                raise NameError(event.name)
+            functor.pattern.process_call(
+                self._context, bufchan, event, functor)
+        except zerorpc.LostRemote:
+            exc_infos = list(sys.exc_info())
+            self._print_traceback(protocol_v1, exc_infos)
+        except Exception as e:
+            # exc_infos = list(sys.exc_info())
+            # human_exc_infos = self._print_traceback(protocol_v1, exc_infos)
+            reply_event = bufchan.new_event(
+                u'ERR', _serialize(e), self._context.hook_get_task_context())
+            self._context.hook_server_inspect_exception(
+                event, reply_event, exc_infos)
+            bufchan.emit_event(reply_event)
+        finally:
+            del exc_infos
+            bufchan.close()
+
+
+class ErrorHandlingMiddleware(object):
+    """
+    Middleware object for handling errors. This should be added to our modified
+    server which serializes exceptions.
+    """
+
+    @staticmethod
+    def client_handle_remote_error(event):
+        """
+        Handle a remote error on the client.
+
+        Parameters
+        ----------
+        event : zerorpc.Event
+
+        Returns
+        -------
+        Exception
+        """
+        if event.header.get(u'v', 1) >= 2:
+            return _deserialize(event.args)
+        else:
+            (msg,) = event.args
+            return zerorpc.RemoteError('RemoteError', msg, None)
+
 
 class Client(zerorpc.Client):
+    """
+    Modified zerorpc client that adds extra functionality.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(Client, self).__init__(*args, **kwargs)
+        self._context.register_middleware(ErrorHandlingMiddleware())
 
     def __enter__(self):
         return self
@@ -199,11 +297,7 @@ class Client(zerorpc.Client):
         schema = self._schema.get(item)
 
         if schema == Schema.VALUE:
-            # FIXME: I'm passing the method name as part of the arg call.
-            #  There were issues storing `lambda: getattr(mod, k)` as the method
-            #  and it returned *different items from the module*. Need to
-            #  understand what's happening.
-            return self(item, item)
+            return self(item)
 
         elif schema == Schema.MODULE:
             # Return our ProxyModule shim object.

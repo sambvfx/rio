@@ -23,8 +23,9 @@ def _debug(func, name=None):
     -------
     Any
     """
-
     if not callable(func):
+        if name:
+            _logger.debug(name)
         return func
 
     if name is None:
@@ -63,15 +64,15 @@ def start(methods=None, host=None, port=None, debug=True):
         from .packages.fs import iterfsmethods
         methods = dict(iterfsmethods())
 
+    if debug and isinstance(methods, dict):
+        methods = {k: _debug(v, name=k) for k, v in methods.items()}
+
     if host is None:
         host = os.environ.get('RIO_HOST', '0.0.0.0')
     if port is None:
         port = os.environ.get('RIO_PORT', '4242')
 
     url = 'tcp://{}:{}'.format(host, port)
-
-    if debug:
-        methods = {k: _debug(v, name=k) for k, v in methods.items()}
 
     s = Server(methods=methods, name='rio')
 
@@ -81,4 +82,7 @@ def start(methods=None, host=None, port=None, debug=True):
     for k, v in sorted(s._methods.items()):
         _logger.debug('  {} ({})'.format(k, s._schema.get(k)))
 
-    s.run()
+    try:
+        s.run()
+    finally:
+        s.close()

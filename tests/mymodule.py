@@ -14,6 +14,14 @@ def b(*args, **kwargs):
     return args, kwargs
 
 
+class CustomError(Exception):
+    pass
+
+
+def raise_error(exctype=ValueError):
+    raise exctype('test error')
+
+
 class CustomPath(unicode):
 
     def __div__(self, other):
@@ -23,6 +31,10 @@ class CustomPath(unicode):
         return '{}({!r})'.format(self.__class__.__name__, str(self))
 
     exists = lambda self: os.path.exists(str(self))
+
+    @property
+    def parent(self):
+        return self.__class__(os.path.dirname(str(self)))
 
     def stat(self):
         return os.stat(str(self))

@@ -24,6 +24,7 @@ def iterfsmethods():
         if obj is not None:
             yield fullname, obj
 
+    for name in names:
         fullname = 'pathlib._NormalAccessor.{}'.format(name)
         yield fullname, getattr(pathlib._NormalAccessor, name)
 
