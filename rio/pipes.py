@@ -291,7 +291,7 @@ class Client(zerorpc.Client):
             pass
 
         # # IPython fix
-        # if method in ('trait_names', '_getAttributeNames'):
+        # if item in ('trait_names', '_getAttributeNames'):
         #     return self._methods
 
         schema = self._schema.get(item)

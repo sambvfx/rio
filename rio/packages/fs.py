@@ -28,4 +28,4 @@ def iterfsmethods():
         fullname = 'pathlib._NormalAccessor.{}'.format(name)
         yield fullname, getattr(pathlib._NormalAccessor, name)
 
-    # TODO: shutil
+    yield 'open', open

@@ -34,6 +34,10 @@ class PatchedClient(Client):
     def __iter__(self):
         for func_name in self._methods:
 
+            # Handle cases such as patching `open`.
+            if '.' not in func_name:
+                func_name = '__builtin__.{}'.format(func_name)
+
             _logger.debug('Patching {!r}'.format(func_name))
 
             yield mock.patch(

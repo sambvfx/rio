@@ -20,6 +20,47 @@ import mymodule
 SERVER_SOCKET = 'tcp://0.0.0.0:4242'
 CLIENT_SOCKET = 'tcp://127.0.0.1:4242'
 
+
+@pytest.fixture
+def client():
+    return rio.api.rio(CLIENT_SOCKET, timeout=1.0)
+
+
+class TestSchema(object):
+    """
+    Collection of schema-type tests.
+    """
+
+    server = None
+
+    @classmethod
+    def setup_class(cls):
+        cls.server = gevent.spawn(rio.server.start, mymodule)
+
+    @classmethod
+    def teardown_class(cls):
+        cls.server.kill()
+        cls.server = None
+
+    @staticmethod
+    def test_getattr_callable(client):
+        assert callable(getattr(client, 'tests.mymodule.a'))
+
+    @staticmethod
+    def test_getattr_value(client):
+        assert getattr(client, 'tests.mymodule.CONST') == 42
+
+    @staticmethod
+    def test_getattr_module(client):
+        assert isinstance(getattr(client, 'tests.mymodule.path'), ProxyModule)
+
+    @staticmethod
+    def test_raise_error(client):
+        with client:
+            with pytest.raises(ValueError):
+                mymodule.raise_error()
+
+
 TEST_PATH_EXISTS = '/tmp/rio_tests'
 TEST_CHILDPATH = '/tmp/rio_tests/child'
 TEST_PATH_NOT_EXISTS = '/tmp/rio_tests_not'
@@ -59,44 +100,13 @@ def custompath(path):
     return mymodule.CustomPath(path)
 
 
-@pytest.fixture
-def client():
-    return rio.api.rio(CLIENT_SOCKET, timeout=1.0)
-
-
-class TestSchema(object):
-
-    server = None
-
-    @classmethod
-    def setup_class(cls):
-        cls.server = gevent.spawn(rio.server.start, mymodule)
-
-    @classmethod
-    def teardown_class(cls):
-        cls.server.kill()
-        cls.server = None
-
-    @staticmethod
-    def test_getattr_callable(client):
-        assert callable(getattr(client, 'tests.mymodule.a'))
-
-    @staticmethod
-    def test_getattr_value(client):
-        assert getattr(client, 'tests.mymodule.CONST') == 42
-
-    @staticmethod
-    def test_getattr_module(client):
-        assert isinstance(getattr(client, 'tests.mymodule.path'), ProxyModule)
-
-    @staticmethod
-    def test_raise_error(client):
-        with client:
-            with pytest.raises(ValueError):
-                mymodule.raise_error()
-
-
 class TestFS(object):
+    """
+    Collection of file system tests.
+
+    This works by "switching" the requested path to one that exists (so we
+    know the rpc call worked).
+    """
 
     server = None
 
@@ -173,3 +183,7 @@ class TestFS(object):
     def test_custom_rpc_listdir(custompath, client):
         with client:
             assert custompath.listdir()
+
+    @staticmethod
+    def test_client(client):
+        assert 'open' in client._methods
