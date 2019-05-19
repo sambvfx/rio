@@ -1,3 +1,7 @@
+"""
+rio is a library for temporarily patching python objects so they are executed
+by a remote server.
+"""
 import os
 import re
 from setuptools import setup, find_packages

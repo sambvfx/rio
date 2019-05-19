@@ -1,4 +1,4 @@
-`rio` is a library used for temporarily patching methods so they execute on a remote server. It's built using [mock](https://docs.python.org/3/library/unittest.mock.html) and [zerorpc](https://www.zerorpc.io/) and allows for remote execute of specific methods/objects/things without changing the underlying code. The methods that are patched are determined by the *server*.
+`rio` is a library for temporarily patching python objects so they are executed by a remote server. It's built using [mock](https://docs.python.org/3/library/unittest.mock.html) and [zerorpc](https://www.zerorpc.io/) and can be used without changing existing code. The methods that are patched are determined by the *server*.
 
 Example
 -------
