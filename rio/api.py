@@ -36,12 +36,14 @@ class PatchedClient(Client):
 
             # Handle cases such as patching `open`.
             if '.' not in func_name:
-                func_name = '__builtin__.{}'.format(func_name)
+                patch_name = '__builtin__.{}'.format(func_name)
+            else:
+                patch_name = func_name
 
             _logger.debug('Patching {!r}'.format(func_name))
 
             yield mock.patch(
-                func_name, autospec=True,
+                patch_name, autospec=True,
                 side_effect=functools.partial(self, func_name))
 
     def __enter__(self):
