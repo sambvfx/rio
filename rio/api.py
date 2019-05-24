@@ -4,11 +4,18 @@ import functools
 
 import mock
 
+from typing import Any, Optional
+
 from .pipes import Client
 from .log import get_logger
 
 
 _logger = get_logger(__name__)
+
+
+__all__ = [
+    'rio',
+]
 
 
 class PatchedClient(Client):
@@ -32,6 +39,8 @@ class PatchedClient(Client):
         self._ctxs = []  # List[mock._patch]
 
     def __iter__(self):
+        # Yield `mock._patch` context managers for all methods hosted by the
+        # server.
         for func_name in self._methods:
 
             # Handle cases such as patching `open`.
@@ -50,7 +59,8 @@ class PatchedClient(Client):
         for ctx in iter(self):
             try:
                 ctx.__enter__()
-            except ImportError:
+            except ImportError as e:
+                _logger.warning('Error patching {!r}: {}'.format(ctx, e))
                 pass
             self._ctxs.append(ctx)
         return super(PatchedClient, self).__enter__()
@@ -78,7 +88,7 @@ def rio(connect_to, context=None, timeout=8.0, heartbeat=5.0,
 
     Returns
     -------
-    _Patched
+    PatchedClient
     """
     kwargs = {
         'connect_to': connect_to,

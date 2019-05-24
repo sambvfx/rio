@@ -204,7 +204,7 @@ class Server(zerorpc.Server):
 class ErrorHandlingMiddleware(object):
     """
     Middleware object for handling errors. This should be added to our modified
-    server which serializes exceptions.
+    client to handle server side serialized exceptions.
     """
 
     @staticmethod

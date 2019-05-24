@@ -1,6 +1,6 @@
 """
-rio is a library for temporarily patching python objects so they are executed
-by a remote server.
+rio is a library for temporarily patching python objects so they instead
+invoke methods hosted by a remote server.
 """
 from __future__ import absolute_import, print_function
 

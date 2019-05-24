@@ -4,7 +4,7 @@ Helper for gathering all filesystem methods to be hosted by a rio server.
 import os
 import pathlib
 
-from typing import *
+from typing import Iterator, Tuple, Callable
 
 
 def iterfsmethods():
@@ -13,7 +13,7 @@ def iterfsmethods():
 
     Returns
     -------
-    Iterator[str, Callable]
+    Iterator[Tuple[str, Callable]]
     """
     # Use pathlib accessor object to get the list of file system methods.
     names = [s for s in dir(pathlib._NormalAccessor) if s[0] != '_']
