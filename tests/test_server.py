@@ -1,6 +1,7 @@
 import pytest
 
-from rio.pipes import Server, Schema, _deserialize, _encode
+from rio.pipes import Server, Schema
+from rio.serialize import Encoder
 
 import mymodule
 
@@ -26,6 +27,11 @@ def moduleserver():
     return Server(mymodule)
 
 
+@pytest.fixture
+def encoder():
+    return Encoder()
+
+
 def test_schema(methodserver):
     schema = methodserver._schema
     assert schema['CONST'] == Schema.VALUE
@@ -35,22 +41,24 @@ def test_schema(methodserver):
     assert schema['CustomPath.exists'] == Schema.CALLABLE
 
 
-def test_callables(methodserver):
+def test_callables(methodserver, encoder):
     assert 'a' in methodserver._methods
-    assert _deserialize(methodserver._methods['a']()) == 1
+    assert encoder.serializer.deserialize(methodserver._methods['a']()) == 1
 
 
-def test_values(methodserver):
+def test_values(methodserver, encoder):
     assert 'CONST' in methodserver._methods
-    assert _deserialize(methodserver._methods['CONST']()) == mymodule.CONST
+    assert encoder.serializer.deserialize(
+        methodserver._methods['CONST']()) == mymodule.CONST
 
 
-def test_callable_args(methodserver):
+def test_callable_args(methodserver, encoder):
     assert 'b' in methodserver._methods
     args = ('foo',)
     kwargs = {'bar': 'spangle'}
-    payload = _encode(*args, **kwargs)
-    rargs, rkwargs = _deserialize(methodserver._methods['b'](*payload))
+    payload = encoder.encode(*args, **kwargs)
+    rargs, rkwargs = encoder.serializer.deserialize(
+        methodserver._methods['b'](*payload))
     assert rargs == args
     assert rkwargs == kwargs
 

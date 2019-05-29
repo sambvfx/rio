@@ -1,4 +1,13 @@
-`rio` is a library for temporarily patching python objects so they are executed by a remote server. It's built using [mock](https://docs.python.org/3/library/unittest.mock.html) and [zerorpc](https://www.zerorpc.io/) and can be used without changing existing code. The methods that are patched are determined by the *server*.
+`rio` is a library for temporarily patching python objects so they are executed by a remote server. It's built using [mock](https://docs.python.org/3/library/unittest.mock.html) and [zerorpc](https://www.zerorpc.io/) and has a goal of simply wrapping existing code in a context manager to alter behavior.
+
+Build
+-----
+```bash
+$ git clone https://github.com/sambvfx/rio.git
+$ cd rio
+$ pip install .
+```
+
 
 Example
 -------
@@ -25,9 +34,11 @@ methods = {
 rio.server.start(methods=methods, port=4242)
 ```
 
-> TIP: Check out `rio.packages.fs` to see helpers to patch *all* filesystem methods.
+> TIP: Check out `rio.collections.fs` to see helpers to patch *all* file system methods.
 
 Next we can test it's working by running some python from a different machine.
+
+> NOTE: The methods that get patched are determined by the *server* connected to.
 
 ### Client
 
@@ -47,4 +58,16 @@ assert not os.path.exists(path)
 # remote call
 with rio(remotefs):
     assert os.path.exists(path)
+```
+
+Contribute
+-----
+Contributions welcome!
+
+`pip` install in editable mode with the tests bundle.
+
+```bash
+$ git clone https://github.com/sambvfx/rio.git
+$ cd rio
+$ pip install -e ".[tests]"
 ```

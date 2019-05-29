@@ -1,5 +1,3 @@
-from __future__ import absolute_import, print_function
-
 import sys
 import inspect
 import functools
@@ -8,10 +6,7 @@ import zerorpc
 
 from kids.cache import undecorate, cache
 
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
+from .serialize import Encoder
 
 try:
     from typing import ModuleType
@@ -19,49 +14,46 @@ except ImportError:
     ModuleType = type(sys)
 
 
-def _serialize(data):
-    return pickle.dumps(data, -1)
-
-
-def _deserialize(data):
-    return pickle.loads(data)
-
-
-def _encode(*args, **kwargs):
-    if not args and not kwargs:
-        return ()
-    return (_serialize((args, kwargs)),)
-
-
-def _decode(*args):
-    if not args:
-        return (), {}
-    return _deserialize(args[0])
-
-
 def _fetch(value):
+    # passthrough used for wrapping non-methods
     return value
 
 
-def _serialization_wrapper(func):
+def _serialization_wrapper(func_or_value, encoder):
+    """
+    Wrap `func_or_value` to be used by zerorpc. This handles encoding/decoding
+    args and kwargs and wrapping with the proper zerorpc decorator.
 
-    if not callable(func):
-        func = functools.partial(_fetch, func)
-        func.__module__ = 'rio.virtual'
-        func.__name__ = 'rio.virtual'
+    Parameters
+    ----------
+    func_or_value : Any
+        Typically a callable although this supports hosting constant values
+        as well.
+    encoder : Encoder
+        Used to encode/decode args and kwargs.
 
-    wrapper, wrapped = undecorate(func)
+    Returns
+    -------
+    zerorpc.decorators.DecoratorBase
+    """
+
+    if not callable(func_or_value):
+        func_or_value = functools.partial(_fetch, func_or_value)
+        func_or_value.__module__ = 'rio.virtual'
+        func_or_value.__name__ = 'rio.virtual'
+
+    wrapper, wrapped = undecorate(func_or_value)
 
     @functools.wraps(wrapped)
     def wrap(*args):
-        args, kwargs = _decode(*args)
-        return _serialize(wrapped(*args, **kwargs))
+        args, kwargs = encoder.decode(*args)
+        return encoder.serializer.serialize(wrapped(*args, **kwargs))
 
     @functools.wraps(wrapped)
     def iterwrap(*args):
-        args, kwargs = _decode(*args)
+        args, kwargs = encoder.decode(*args)
         for x in wrapped(*args, **kwargs):
-            yield _serialize(x)
+            yield encoder.serializer.serialize(x)
 
     if inspect.isgeneratorfunction(wrapped):
         return zerorpc.stream(wrapper(iterwrap))
@@ -110,6 +102,10 @@ class ProxyModule(object):
         return '<{}({!r})>'.format(self.__class__.__name__, self._fullname)
 
     def __getattr__(self, item):
+        try:
+            return object.__getattribute__(self, item)
+        except AttributeError:
+            pass
         return getattr(self._client, '{}.{}'.format(self._name, item))
 
 
@@ -126,7 +122,11 @@ class Server(zerorpc.Server):
     """
 
     def __init__(self, methods=None, name=None, context=None, pool_size=None,
-                 heartbeat=5):
+                 heartbeat=5, encoder=None):
+
+        if encoder is None:
+            encoder = Encoder()
+        self.encoder = encoder
 
         if methods is None:
             methods = self
@@ -134,7 +134,8 @@ class Server(zerorpc.Server):
         _methods = self._filter_methods(Server, self, methods)
         # Do this before wrapping with serialization / decorators
         self._schema = {k: Schema.get(v) for k, v in _methods.items()}
-        _methods = {k: _serialization_wrapper(v) for k, v in _methods.items()
+        _methods = {k: _serialization_wrapper(v, self.encoder)
+                    for k, v in _methods.items()
                     if not isinstance(v, ModuleType)}
 
         super(Server, self).__init__(
@@ -192,7 +193,8 @@ class Server(zerorpc.Server):
             # exc_infos = list(sys.exc_info())
             # human_exc_infos = self._print_traceback(protocol_v1, exc_infos)
             reply_event = bufchan.new_event(
-                u'ERR', _serialize(e), self._context.hook_get_task_context())
+                u'ERR', self.encoder.serializer.serialize(e),
+                self._context.hook_get_task_context())
             self._context.hook_server_inspect_exception(
                 event, reply_event, exc_infos)
             bufchan.emit_event(reply_event)
@@ -206,9 +208,10 @@ class ErrorHandlingMiddleware(object):
     Middleware object for handling errors. This should be added to our modified
     client to handle server side serialized exceptions.
     """
+    def __init__(self, encoder):
+        self.encoder = encoder
 
-    @staticmethod
-    def client_handle_remote_error(event):
+    def client_handle_remote_error(self, event):
         """
         Handle a remote error on the client.
 
@@ -221,7 +224,7 @@ class ErrorHandlingMiddleware(object):
         Exception
         """
         if event.header.get(u'v', 1) >= 2:
-            return _deserialize(event.args)
+            return self.encoder.serializer.deserialize(event.args)
         else:
             (msg,) = event.args
             return zerorpc.RemoteError('RemoteError', msg, None)
@@ -233,8 +236,15 @@ class Client(zerorpc.Client):
     """
 
     def __init__(self, *args, **kwargs):
+        encoder = kwargs.pop('encoder', None)
+        if encoder is None:
+            encoder = Encoder()
+        self.encoder = encoder
+
         super(Client, self).__init__(*args, **kwargs)
-        self._context.register_middleware(ErrorHandlingMiddleware())
+
+        self._context.register_middleware(
+            ErrorHandlingMiddleware(self.encoder))
 
     def __enter__(self):
         return self
@@ -272,9 +282,9 @@ class Client(zerorpc.Client):
             except KeyError:
                 pass
 
-        payload = _encode(*args, **kwargs)
+        payload = self.encoder.encode(*args, **kwargs)
 
-        return _deserialize(
+        return self.encoder.serializer.deserialize(
             super(Client, self).__call__(method, *payload, **kw))
 
     def __call__(self, method, *args, **kwargs):

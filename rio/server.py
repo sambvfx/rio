@@ -61,7 +61,7 @@ def start(methods=None, host=None, port=None, debug=True):
         executed.
     """
     if methods is None:
-        from .packages.fs import iterfsmethods
+        from .collections.fs import iterfsmethods
         methods = dict(iterfsmethods())
 
     if debug and isinstance(methods, dict):

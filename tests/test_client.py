@@ -11,7 +11,7 @@ import pytest
 
 import rio.server
 import rio.api
-from rio.packages.fs import iterfsmethods
+from rio.collections.fs import iterfsmethods
 from rio.pipes import ProxyModule
 
 import mymodule
@@ -19,6 +19,15 @@ import mymodule
 
 SERVER_SOCKET = 'tcp://0.0.0.0:4242'
 CLIENT_SOCKET = 'tcp://127.0.0.1:4242'
+
+
+def healthcheck(greenlet):
+    if greenlet.dead:
+        if getattr(greenlet, 'exception', None) is not None:
+            if hasattr(greenlet, '_raise_exception'):
+                greenlet._raise_exception()
+            else:
+                raise greenlet.exception
 
 
 @pytest.fixture
@@ -36,6 +45,8 @@ class TestSchema(object):
     @classmethod
     def setup_class(cls):
         cls.server = gevent.spawn(rio.server.start, mymodule)
+        gevent.sleep(0.5)
+        healthcheck(cls.server)
 
     @classmethod
     def teardown_class(cls):
@@ -132,6 +143,9 @@ class TestFS(object):
         cls.server = gevent.spawn(
             rio.server.start,
             {k: switcharoo(v) for k, v in iterfsmethods()})
+
+        gevent.sleep(0.5)
+        healthcheck(cls.server)
 
     @classmethod
     def teardown_class(cls):
