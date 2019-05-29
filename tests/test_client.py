@@ -49,6 +49,10 @@ class TestSchema(object):
         healthcheck(cls.server)
 
     @classmethod
+    def setup_method(cls):
+        healthcheck(cls.server)
+
+    @classmethod
     def teardown_class(cls):
         cls.server.kill()
         cls.server = None
@@ -145,6 +149,10 @@ class TestFS(object):
             {k: switcharoo(v) for k, v in iterfsmethods()})
 
         gevent.sleep(0.5)
+        healthcheck(cls.server)
+
+    @classmethod
+    def setup_method(cls):
         healthcheck(cls.server)
 
     @classmethod
