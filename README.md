@@ -38,8 +38,6 @@ rio.server.start(methods=methods, port=4242)
 
 Next we can test it's working by running some python from a different machine.
 
-> NOTE: The methods that get patched are determined by the *server* connected to.
-
 ### Client
 
 ```python
@@ -60,14 +58,27 @@ with rio(remotefs):
     assert os.path.exists(path)
 ```
 
+What just happened here? Within the `rio` context manager, the `os.path.exists` method was patched to execute via rpc.
+
+> NOTE: The methods that get patched are determined by the *server* connected to.
+
+If you're familiar with the testing library [mock](https://docs.python.org/3/library/unittest.mock.html), it's similar to doing:
+
+```python
+with mock.patch('os.path.exists', side_effect=rpc_os_path_exists):
+    ...
+```
+
 Contribute
 -----
-Contributions welcome!
+Contributions welcome! This is in a prototype stage and could use more robust testing and error handling.
 
 `pip` install in editable mode with the tests bundle.
 
 ```bash
 $ git clone https://github.com/sambvfx/rio.git
 $ cd rio
+$ virtualenv venv
+$ source venv/bin/activate
 $ pip install -e ".[tests]"
 ```
